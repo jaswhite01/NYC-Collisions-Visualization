@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>NYC Motor Vehicle Collisions - Milestone 3 Dynamic (2022-2024)</title>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="src/css/styles.css" />
+
+  <!-- Our app entry  -->
+  <script type="module" src="src/js/main.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <h1>NYC Motor Vehicle Collisions (2022-2024)</h1>
+    <p class="subtitle">
+      Exploring spatial, temporal, and behavioral patterns in NYC crashes
+    </p>
+  </header>
+
+  <main class="layout">
+    <!-- LEFT: View B + View C stacked -->
+    <section class="panel sidebar-panel" aria-label="Time and factors overview">
+      <section id="heatmap-root"
+               class="subpanel heatmap-panel"
+               aria-label="Crash frequency by hour and weekday">
+      </section>
+
+      <section id="factors-root"
+               class="subpanel factors-panel"
+               aria-label="Top crash factors">
+      </section>
+    </section>
+
+    <!-- RIGHT: View A map ( legend overlays here) -->
+    <section id="map-root"
+             class="panel map-panel"
+             aria-label="NYC crash map">
+      <!-- map.js will inject SVG + canvas + legend -->
+    </section>
+
+    <!-- BOTTOM: View D placeholder -->
+    <section id="details-root"
+             class="panel details-panel"
+             aria-label="Detailed crash records (placeholder)">
+      <p class="details-placeholder">
+        View D - detailed table / records will go here once we finish A, B C!.
+      </p>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    Data: NYC Open Data (h9gi-nx95, gthc-hcne). Window 2022-2024. Frozen exports.
+  </footer>
+</body>
+</html>

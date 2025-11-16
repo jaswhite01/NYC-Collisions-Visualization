@@ -1,0 +1,247 @@
+/* ---------- Base page & typography (Basic) */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans";
+  color: #111827;
+  background: #ffffff;
+}
+
+.app-header {
+  padding: 1rem 1.5rem 0.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.app-header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.8rem;
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #6b7280;
+}
+
+.app-footer {
+  padding: 0.75rem 1.5rem 1rem;
+  font-size: 0.8rem;
+  color: #6b7280;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* ---------- Current dashboard layout */
+/* Grid:
+   [sidebar][map]
+   [detail ][detail]
+*/
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.3fr) 2.7fr;
+  /* top row tall enough for map + sidebar, bottom row is auto */
+  grid-template-rows: minmax(520px, max-content) auto;
+  grid-template-areas:
+    "sidebar map"
+    "detail  detail";
+  gap: 1rem;
+  padding: 1rem 1.5rem 1.5rem;
+}
+
+/* Generic card / panel */
+
+.panel {
+  background: #f9fafb;
+  border-radius: 10px;
+  padding: 0.75rem;
+  box-shadow: 0 0 0 1px #e5e7eb;
+  overflow: hidden;
+}
+
+/* Left sidebar: View B (heatmap) on top and View C (factors) below */
+
+.sidebar-panel {
+  grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow: visible;
+}
+
+.subpanel {
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px #e5e7eb;
+  padding: 0.75rem;
+}
+
+/* Heatmap panel: a bit taller, narrower padding so SVG can fill */
+
+.heatmap-panel {
+  flex: 0 0 400px;
+  padding: 0.5rem 0.4rem 0.6rem;
+}
+
+/* Factors panel: fills remaining height */
+
+.factors-panel {
+  flex: 1 1 auto;
+  min-height: 400px;
+  padding: 0.5rem 0.75rem 0.75rem;
+}
+
+/* Remove stray whitespace under inline SVGs in factors panel */
+.factors-panel svg {
+  display: block;
+}
+
+/* Map area (View A) */
+
+.map-panel {
+  grid-area: map;
+  position: relative;
+  padding: 0;
+  min-height: 520px;
+}
+
+/* Bottom detail panel (View D placeholder for now) */
+
+.details-panel {
+  grid-area: detail;
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+}
+
+.details-placeholder {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #6b7280;
+}
+
+/* -------- Map- SVG + canvas + legend */
+
+.map-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.map-svg,
+.map-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.map-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+}
+
+.map-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.borough-outline {
+  fill: #f3f4f6;
+  stroke: #9ca3af;
+  stroke-width: 1;
+}
+
+/* Legend overlay inside the map (View A) */
+
+.map-legend {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: rgba(110, 128, 169, 0.9);
+  color: #e5e7eb;
+  font-size: 0.8rem;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.25);
+  z-index: 3;
+}
+
+.map-legend-title {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.map-legend-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.map-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+/* Match map.js severity colors */
+
+.legend-fatal {
+  background: rgb(220, 38, 38);
+}
+
+.legend-injury {
+  background: rgb(245, 158, 11);
+}
+
+.legend-pdo {
+  background: rgba(31, 41, 55, 0.4);
+}
+
+
+
+/* --------- Heatmap (View B)*/
+
+.heat-cell {
+  stroke: #e5e7eb;
+  stroke-width: 0.5;
+}
+
+.axis path,
+.axis line {
+  stroke: #9ca3af;
+}
+
+.heatmap-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+
+/* ----- Factors bar chart (View C)  */
+
+.factors-chart text {
+  font-size: 11px;
+}

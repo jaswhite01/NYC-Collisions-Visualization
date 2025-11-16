@@ -1,0 +1,22 @@
+# Raw data
+data_raw/
+
+# Notebooks 
+*.ipynb
+.ipynb_checkpoints/
+eda/
+
+
+# Python cache
+__pycache__/
+*.pyc
+
+# VS Code settings
+.vscode/
+
+# OS system files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
