@@ -9,7 +9,7 @@ export async function initMap() {
     return;
   }
 
-  // Clear 
+  // Clear
   container.innerHTML = "";
 
   // Wrapper for SVG + canvas
@@ -17,11 +17,7 @@ export async function initMap() {
   wrapper.className = "map-wrap";
   container.appendChild(wrapper);
 
-  // Legend overlay 
-  /* (Simple for now, plan on turning view A into a 
-   * full featured overlay filter panel w tool tips 
-   * and points that update for selection) */
-
+  // Legend overlay
   const legend = document.createElement("div");
   legend.className = "map-legend";
   legend.innerHTML = `
@@ -43,7 +39,12 @@ export async function initMap() {
   `;
   wrapper.appendChild(legend);
 
-  // SVG for borough outlines
+  // Tooltip overlay (for hover info)
+  const tooltip = document.createElement("div");
+  tooltip.className = "map-tooltip";
+  wrapper.appendChild(tooltip);
+
+  // SVG for borough outlines and mouse capture
   const svg = d3
     .select(wrapper)
     .append("svg")
@@ -60,6 +61,10 @@ export async function initMap() {
 
   let geojson;
   let crashes;
+
+  // quadtree + currently hovered crash
+  let quadtree = null;
+  let hoveredCrash = null;
 
   try {
     [geojson, crashes] = await Promise.all([
@@ -87,7 +92,6 @@ export async function initMap() {
     canvas.height = height * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-
     // Fit projection to geojson
     projection.fitSize([width, height], geojson);
 
@@ -101,6 +105,21 @@ export async function initMap() {
       .attr("class", "borough-outline")
       .attr("d", path);
 
+    // Transparent rect over SVG to capture mouse events
+    const hitRect = svg
+      .selectAll(".map-hit-rect")
+      .data([null]);
+    hitRect
+      .enter()
+      .append("rect")
+      .attr("class", "map-hit-rect")
+      .merge(hitRect)
+      .attr("width", width)
+      .attr("height", height)
+      .attr("fill", "transparent")
+      .on("mousemove", handleMouseMove)
+      .on("mouseleave", handleMouseLeave);
+
     // Project crash points
     for (const d of crashes) {
       const [lon, lat] = [d.longitude, d.latitude];
@@ -113,6 +132,13 @@ export async function initMap() {
         d.y = NaN;
       }
     }
+
+    // Build quadtree for fast nearest-neighbor lookup
+    quadtree = d3
+      .quadtree()
+      .x(d => d.x)
+      .y(d => d.y)
+      .addAll(crashes.filter(d => !Number.isNaN(d.x) && !Number.isNaN(d.y)));
 
     drawPoints();
   }
@@ -140,6 +166,74 @@ export async function initMap() {
       ctx.arc(d.x, d.y, radius, 0, 2 * Math.PI);
       ctx.fill();
     }
+
+    // Draw hover highlight on top
+    if (hoveredCrash && !Number.isNaN(hoveredCrash.x) && !Number.isNaN(hoveredCrash.y)) {
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(37, 99, 235, 0.9)"; // blue outline
+      ctx.lineWidth = 2;
+      ctx.arc(hoveredCrash.x, hoveredCrash.y, 4, 0, 2 * Math.PI);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.fillStyle = "rgba(37, 99, 235, 0.9)";
+      ctx.arc(hoveredCrash.x, hoveredCrash.y, 2, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+  }
+
+  function handleMouseMove(event) {
+    if (!quadtree) return;
+
+    const [mx, my] = d3.pointer(event, svg.node());
+    const searchRadius = 10; // pixels
+
+    const nearest = quadtree.find(mx, my, searchRadius);
+
+    if (!nearest) {
+      hoveredCrash = null;
+      tooltip.style.opacity = 0;
+      drawPoints();
+      return;
+    }
+
+    hoveredCrash = nearest;
+    drawPoints();
+
+    // Position tooltip relative to wrapper
+    const bounds = wrapper.getBoundingClientRect();
+    const clientX = event.clientX;
+    const clientY = event.clientY;
+
+    tooltip.style.opacity = 1;
+    tooltip.style.left = `${clientX - bounds.left + 12}px`;
+    tooltip.style.top = `${clientY - bounds.top + 12}px`;
+
+    const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const weekdayLabel =
+      nearest.weekday != null ? weekdayNames[nearest.weekday] ?? nearest.weekday : "–";
+    const hourLabel = nearest.hour != null ? `${nearest.hour}:00` : "–";
+    const severityLabel =
+      nearest.severity === "fatal"
+        ? "Fatal"
+        : nearest.severity === "injury"
+        ? "Injury"
+        : "Property damage only";
+
+    tooltip.innerHTML = `
+      <div><strong>Crash ${nearest.collision_id}</strong></div>
+      <div>Severity: ${severityLabel}</div>
+      <div>Borough: ${nearest.borough ?? "–"}</div>
+      <div>ZIP: ${nearest.zip_code ?? "–"}</div>
+      <div>Weekday: ${weekdayLabel}</div>
+      <div>Hour: ${hourLabel}</div>
+    `;
+  }
+
+  function handleMouseLeave() {
+    hoveredCrash = null;
+    tooltip.style.opacity = 0;
+    drawPoints();
   }
 
   resizeAndRedraw();

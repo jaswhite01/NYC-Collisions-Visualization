@@ -245,3 +245,23 @@ body {
 .factors-chart text {
   font-size: 11px;
 }
+
+.map-tooltip {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.2);
+  color: #111827;
+  max-width: 220px;
+  z-index: 10;
+}
+
+.map-hit-rect {
+  cursor: crosshair;
+}
