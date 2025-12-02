@@ -1,34 +1,28 @@
 // View B - Hour × Weekday heatmap
 // src/js/heatmap.js
-/* Right now its simple showing avg'd values for 2022-2024 */
 
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+import { updateFromHeatmap } from "./main.js";
 
 const HEATMAP_ROOT_ID = "heatmap-root";
 
-export async function initHeatmap() {
+export async function initHeatmap(filters = {}) {
   const root = document.getElementById(HEATMAP_ROOT_ID);
   if (!root) {
     console.warn(`No element with id="${HEATMAP_ROOT_ID}" found.`);
     return;
   }
 
-  // Clear previous 
   root.innerHTML = "";
 
-  // SVG size to the white card size
   const rootBox = root.getBoundingClientRect();
   const panelW = rootBox.width || 480;
-
-  // Extra height so the legend fits  under the grid
   const panelH = (rootBox.height || 260) + 50;
 
-  // Room for axes and labels
   const margin = { top: 40, right: 18, bottom: 55, left: 55 };
   const innerWidth = panelW - margin.left - margin.right;
   const innerHeight = panelH - margin.top - margin.bottom;
 
-  // SVG + main group
   const svg = d3
     .select(root)
     .append("svg")
@@ -39,28 +33,60 @@ export async function initHeatmap() {
     .append("g")
     .attr("transform", `translate(${margin.left},${margin.top})`);
 
-  // Load and aggregate data: (weekday, hour) -> count
-  const weekdays = [0, 1, 2, 3, 4, 5, 6]; // 0 = Sun ... 6 = Sat
+  const weekdays = [0, 1, 2, 3, 4, 5, 6];
   const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const hours = d3.range(24);
 
   let records;
   try {
-    const raw = await d3.csv("data_proc/crashes_clean.csv", d => ({
-      weekday: d.weekday === "" ? null : +d.weekday,
-      hour: d.hour === "" ? null : +d.hour,
-    }));
+    const raw = await d3.csv("data_proc/crashes_clean.csv", d => {
+      // auto-detect factor like in factors.js
+      let rawFactor =
+        d.factor_clean ||
+        d.factor_1_clean ||
+        d.factor_1 ||
+        d.contributing_factor ||
+        d.contributing_factor_1;
+
+      if (!rawFactor || rawFactor === "") {
+        for (const key of Object.keys(d)) {
+          if (key.toLowerCase().includes("factor")) {
+            const val = d[key];
+            if (val && val !== "") {
+              rawFactor = val;
+              break;
+            }
+          }
+        }
+      }
+
+      const factor_clean =
+        rawFactor && rawFactor !== "" ? rawFactor : "Other / unknown";
+
+      return {
+        weekday: d.weekday === "" ? null : +d.weekday,
+        hour: d.hour === "" ? null : +d.hour,
+        factor_clean
+      };
+    });
+
     records = raw.filter(d => d.weekday != null && d.hour != null);
   } catch (err) {
     console.error("Error loading heatmap data:", err);
     return;
   }
 
+  // Apply factor filter if present
+  let filteredRecords = records;
+  if (filters && filters.factor) {
+    filteredRecords = records.filter(r => r.factor_clean === filters.factor);
+  }
+
   const counts = d3.rollup(
-    records,
+    filteredRecords,
     v => v.length,
     d => d.weekday,
-    d => d.hour,
+    d => d.hour
   );
 
   const cells = [];
@@ -72,7 +98,6 @@ export async function initHeatmap() {
     });
   });
 
-  // Scales
   const x = d3
     .scaleBand()
     .domain(weekdays)
@@ -91,10 +116,8 @@ export async function initHeatmap() {
 
   const color = d3
     .scaleSequential(d3.interpolateBlues)
-    .domain([minCount, maxCount]); 
+    .domain([minCount, maxCount]);
 
-
-  // Axes
   const tickHours = [0, 3, 6, 9, 12, 15, 18, 21];
 
   function formatHour12(h) {
@@ -129,7 +152,6 @@ export async function initHeatmap() {
     .selectAll("text")
     .style("font-size", "11px");
 
-  // Cells
   g.selectAll("rect.heat-cell")
     .data(cells)
     .join("rect")
@@ -138,9 +160,12 @@ export async function initHeatmap() {
     .attr("y", d => y(d.hour))
     .attr("width", x.bandwidth())
     .attr("height", y.bandwidth())
-    .attr("fill", d => (d.count === 0 ? "#f9fafb" : color(d.count)));
+    .attr("fill", d => (d.count === 0 ? "#f9fafb" : color(d.count)))
+    .style("cursor", "pointer")
+    .on("click", (event, d) => {
+      updateFromHeatmap(d.hour, d.weekday);
+    });
 
-  // Title
   svg
     .append("text")
     .attr("x", margin.left)
@@ -150,7 +175,6 @@ export async function initHeatmap() {
     .attr("font-weight", 600)
     .text("Crash counts by hour of day and weekday");
 
-  // Color legend (dynamic min/max ,)
   const legendWidth = 160;
   const legendHeight = 10;
 
@@ -204,3 +228,5 @@ export async function initHeatmap() {
     .attr("text-anchor", "end")
     .text(fmt(maxCount));
 }
+
+

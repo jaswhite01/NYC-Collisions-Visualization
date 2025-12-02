@@ -1,23 +1,27 @@
+// src/js/map.js
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
 
 const MAP_ROOT_ID = "map-root";
+let activeFilters = { hour: null, weekday: null, factor: null };
+let redrawPoints = null;
 
-export async function initMap() {
+export async function initMap(filters) {
+  if (filters) {
+    activeFilters = filters;
+  }
+
   const container = document.getElementById(MAP_ROOT_ID);
   if (!container) {
     console.error(`No element with id="${MAP_ROOT_ID}" found.`);
     return;
   }
 
-  // Clear
   container.innerHTML = "";
 
-  // Wrapper for SVG + canvas
   const wrapper = document.createElement("div");
   wrapper.className = "map-wrap";
   container.appendChild(wrapper);
 
-  // Legend overlay
   const legend = document.createElement("div");
   legend.className = "map-legend";
   legend.innerHTML = `
@@ -39,18 +43,15 @@ export async function initMap() {
   `;
   wrapper.appendChild(legend);
 
-  // Tooltip overlay (for hover info)
   const tooltip = document.createElement("div");
   tooltip.className = "map-tooltip";
   wrapper.appendChild(tooltip);
 
-  // SVG for borough outlines and mouse capture
   const svg = d3
     .select(wrapper)
     .append("svg")
     .attr("class", "map-svg");
 
-  // Canvas for points
   const canvas = document.createElement("canvas");
   canvas.className = "map-canvas";
   wrapper.appendChild(canvas);
@@ -62,7 +63,6 @@ export async function initMap() {
   let geojson;
   let crashes;
 
-  // quadtree + currently hovered crash
   let quadtree = null;
   let hoveredCrash = null;
 
@@ -83,19 +83,15 @@ export async function initMap() {
     const { width, height } = wrapper.getBoundingClientRect();
     if (!width || !height) return;
 
-    // Resize SVG
     svg.attr("width", width).attr("height", height);
 
-    // Resize canvas (handle devicePixelRatio)
     const dpr = window.devicePixelRatio || 1;
     canvas.width = width * dpr;
     canvas.height = height * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Fit projection to geojson
     projection.fitSize([width, height], geojson);
 
-    // Draw borough outlines
     svg.selectAll("path").remove();
     svg
       .selectAll("path")
@@ -105,10 +101,7 @@ export async function initMap() {
       .attr("class", "borough-outline")
       .attr("d", path);
 
-    // Transparent rect over SVG to capture mouse events
-    const hitRect = svg
-      .selectAll(".map-hit-rect")
-      .data([null]);
+    const hitRect = svg.selectAll(".map-hit-rect").data([null]);
     hitRect
       .enter()
       .append("rect")
@@ -120,7 +113,6 @@ export async function initMap() {
       .on("mousemove", handleMouseMove)
       .on("mouseleave", handleMouseLeave);
 
-    // Project crash points
     for (const d of crashes) {
       const [lon, lat] = [d.longitude, d.latitude];
       const p = projection([lon, lat]);
@@ -133,7 +125,6 @@ export async function initMap() {
       }
     }
 
-    // Build quadtree for fast nearest-neighbor lookup
     quadtree = d3
       .quadtree()
       .x(d => d.x)
@@ -147,9 +138,20 @@ export async function initMap() {
     const { width, height } = wrapper.getBoundingClientRect();
     ctx.clearRect(0, 0, width, height);
 
-    const radius = 0.8;
+    const radius =
+      activeFilters.hour !== null ||
+      activeFilters.weekday !== null ||
+      activeFilters.factor !== null
+        ? 2.5
+        : 0.8;
 
     for (const d of crashes) {
+      if (activeFilters.hour !== null && d.hour !== activeFilters.hour) continue;
+      if (activeFilters.weekday !== null && d.weekday !== activeFilters.weekday)
+        continue;
+      if (activeFilters.factor !== null && d.factor_clean !== activeFilters.factor)
+        continue;
+
       if (Number.isNaN(d.x) || Number.isNaN(d.y)) continue;
 
       let fill;
@@ -167,10 +169,13 @@ export async function initMap() {
       ctx.fill();
     }
 
-    // Draw hover highlight on top
-    if (hoveredCrash && !Number.isNaN(hoveredCrash.x) && !Number.isNaN(hoveredCrash.y)) {
+    if (
+      hoveredCrash &&
+      !Number.isNaN(hoveredCrash.x) &&
+      !Number.isNaN(hoveredCrash.y)
+    ) {
       ctx.beginPath();
-      ctx.strokeStyle = "rgba(37, 99, 235, 0.9)"; // blue outline
+      ctx.strokeStyle = "rgba(37, 99, 235, 0.9)";
       ctx.lineWidth = 2;
       ctx.arc(hoveredCrash.x, hoveredCrash.y, 4, 0, 2 * Math.PI);
       ctx.stroke();
@@ -182,11 +187,13 @@ export async function initMap() {
     }
   }
 
+  redrawPoints = drawPoints;
+
   function handleMouseMove(event) {
     if (!quadtree) return;
 
     const [mx, my] = d3.pointer(event, svg.node());
-    const searchRadius = 10; // pixels
+    const searchRadius = 10;
 
     const nearest = quadtree.find(mx, my, searchRadius);
 
@@ -200,7 +207,6 @@ export async function initMap() {
     hoveredCrash = nearest;
     drawPoints();
 
-    // Position tooltip relative to wrapper
     const bounds = wrapper.getBoundingClientRect();
     const clientX = event.clientX;
     const clientY = event.clientY;
@@ -211,7 +217,9 @@ export async function initMap() {
 
     const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const weekdayLabel =
-      nearest.weekday != null ? weekdayNames[nearest.weekday] ?? nearest.weekday : "–";
+      nearest.weekday != null
+        ? weekdayNames[nearest.weekday] ?? nearest.weekday
+        : "–";
     const hourLabel = nearest.hour != null ? `${nearest.hour}:00` : "–";
     const severityLabel =
       nearest.severity === "fatal"
@@ -241,6 +249,26 @@ export async function initMap() {
 }
 
 function rowParser(d) {
+  // auto-detect factor column, similar to factors.js
+  let rawFactor =
+    d.factor_clean ||
+    d.factor_1_clean ||
+    d.factor_1 ||
+    d.contributing_factor ||
+    d.contributing_factor_1;
+
+  if (!rawFactor || rawFactor === "") {
+    for (const key of Object.keys(d)) {
+      if (key.toLowerCase().includes("factor")) {
+        const val = d[key];
+        if (val && val !== "") {
+          rawFactor = val;
+          break;
+        }
+      }
+    }
+  }
+
   return {
     collision_id: d.collision_id,
     latitude: +d.latitude,
@@ -249,6 +277,15 @@ function rowParser(d) {
     zip_code: d.zip_code || null,
     hour: d.hour === "" ? null : +d.hour,
     weekday: d.weekday === "" ? null : +d.weekday,
-    severity: d.severity || "pdo"
+    severity: d.severity || "pdo",
+    factor_clean: rawFactor && rawFactor !== "" ? rawFactor : "Other / unknown"
   };
 }
+
+export function updateMap(filters) {
+  activeFilters = filters;
+  if (redrawPoints) {
+    redrawPoints();
+  }
+}
+
