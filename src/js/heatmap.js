@@ -1,232 +1,188 @@
-// View B - Hour × Weekday heatmap
-// src/js/heatmap.js
+// ============================================================
+// heatmap.js - View B (Hour × Weekday Heatmap)
+// ============================================================
 
-import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
-import { updateFromHeatmap } from "./main.js";
+import { setHeatmapFilter, filters } from "./main.js";
 
-const HEATMAP_ROOT_ID = "heatmap-root";
+// ============================================================
+// updateHeatmap - rebuilds entire heatmap on each renderAll()
+// ============================================================
+export function updateHeatmap(data) {
+  const root = d3.select("#heatmap-root");
+  root.selectAll("*").remove();
 
-export async function initHeatmap(filters = {}) {
-  const root = document.getElementById(HEATMAP_ROOT_ID);
-  if (!root) {
-    console.warn(`No element with id="${HEATMAP_ROOT_ID}" found.`);
-    return;
-  }
+  const width = root.node().clientWidth;
+  const height = 410;
 
-  root.innerHTML = "";
+  const margin = { top: 40, right: 30, bottom: 60, left: 70 };
 
-  const rootBox = root.getBoundingClientRect();
-  const panelW = rootBox.width || 480;
-  const panelH = (rootBox.height || 260) + 50;
+  const svg = root.append("svg")
+    .attr("width", width)
+    .attr("height", height);
 
-  const margin = { top: 40, right: 18, bottom: 55, left: 55 };
-  const innerWidth = panelW - margin.left - margin.right;
-  const innerHeight = panelH - margin.top - margin.bottom;
+  // ------------------------------------------------------------
+  // 1. Build grid of hour × weekday counts
+  // ------------------------------------------------------------
+  const hours = d3.range(0, 24);
+  const weekdays = d3.range(0, 7);
 
-  const svg = d3
-    .select(root)
-    .append("svg")
-    .attr("width", panelW)
-    .attr("height", panelH);
-
-  const g = svg
-    .append("g")
-    .attr("transform", `translate(${margin.left},${margin.top})`);
-
-  const weekdays = [0, 1, 2, 3, 4, 5, 6];
-  const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const hours = d3.range(24);
-
-  let records;
-  try {
-    const raw = await d3.csv("data_proc/crashes_clean.csv", d => {
-      // auto-detect factor like in factors.js
-      let rawFactor =
-        d.factor_clean ||
-        d.factor_1_clean ||
-        d.factor_1 ||
-        d.contributing_factor ||
-        d.contributing_factor_1;
-
-      if (!rawFactor || rawFactor === "") {
-        for (const key of Object.keys(d)) {
-          if (key.toLowerCase().includes("factor")) {
-            const val = d[key];
-            if (val && val !== "") {
-              rawFactor = val;
-              break;
-            }
-          }
-        }
-      }
-
-      const factor_clean =
-        rawFactor && rawFactor !== "" ? rawFactor : "Other / unknown";
-
-      return {
-        weekday: d.weekday === "" ? null : +d.weekday,
-        hour: d.hour === "" ? null : +d.hour,
-        factor_clean
-      };
-    });
-
-    records = raw.filter(d => d.weekday != null && d.hour != null);
-  } catch (err) {
-    console.error("Error loading heatmap data:", err);
-    return;
-  }
-
-  // Apply factor filter if present
-  let filteredRecords = records;
-  if (filters && filters.factor) {
-    filteredRecords = records.filter(r => r.factor_clean === filters.factor);
-  }
-
-  const counts = d3.rollup(
-    filteredRecords,
-    v => v.length,
-    d => d.weekday,
-    d => d.hour
+  const nested = d3.rollup(
+    data,
+    (v) => v.length,
+    (d) => +d.hour,
+    (d) => +d.weekday
   );
 
   const cells = [];
-  weekdays.forEach(w => {
-    hours.forEach(h => {
-      const row = counts.get(w);
-      const value = row ? row.get(h) || 0 : 0;
-      cells.push({ weekday: w, hour: h, count: value });
+  hours.forEach((h) => {
+    weekdays.forEach((w) => {
+      cells.push({
+        hour: h,
+        weekday: w,
+        count: nested.get(h)?.get(w) || 0
+      });
     });
   });
 
-  const x = d3
-    .scaleBand()
-    .domain(weekdays)
-    .range([0, innerWidth])
-    .padding(0.05);
+  const counts = cells.map((d) => d.count);
+  const maxVal = d3.max(counts) || 0;
+  const minVal = d3.min(counts) ?? 0;
 
-  const y = d3
-    .scaleBand()
-    .domain(hours)
-    .range([0, innerHeight])
-    .padding(0.05);
+  const color = d3.scaleSequential()
+    .domain([0, maxVal])
+    .interpolator(d3.interpolateOranges);
 
-  const countsArr = cells.map(d => d.count);
-  const minCount = d3.min(countsArr) ?? 0;
-  const maxCount = d3.max(countsArr) || 1;
+  const gridW = width - margin.left - margin.right;
+  const gridH = height - margin.top - margin.bottom;
 
-  const color = d3
-    .scaleSequential(d3.interpolateBlues)
-    .domain([minCount, maxCount]);
+  const cellW = gridW / 7;
+  const cellH = gridH / 24;
 
-  const tickHours = [0, 3, 6, 9, 12, 15, 18, 21];
+  const g = svg.append("g")
+    .attr("transform", `translate(${margin.left},${margin.top})`);
 
-  function formatHour12(h) {
-    const hour = h % 24;
-    const suffix = hour < 12 ? "AM" : "PM";
-    let display = hour % 12;
-    if (display === 0) display = 12;
-    return `${display} ${suffix}`;
-  }
-
-  const xAxis = d3
-    .axisBottom(x)
-    .tickFormat(d => weekdayLabels[d])
-    .tickSizeOuter(0);
-
-  const yAxis = d3
-    .axisLeft(y)
-    .tickValues(tickHours)
-    .tickFormat(formatHour12)
-    .tickSizeOuter(0);
-
-  g.append("g")
-    .attr("class", "axis axis-x")
-    .attr("transform", `translate(0,${innerHeight})`)
-    .call(xAxis)
-    .selectAll("text")
-    .style("font-size", "10px");
-
-  g.append("g")
-    .attr("class", "axis axis-y")
-    .call(yAxis)
-    .selectAll("text")
-    .style("font-size", "11px");
-
+  // ------------------------------------------------------------
+  // 2. Draw heatmap cells
+  // ------------------------------------------------------------
   g.selectAll("rect.heat-cell")
     .data(cells)
-    .join("rect")
-    .attr("class", "heat-cell")
-    .attr("x", d => x(d.weekday))
-    .attr("y", d => y(d.hour))
-    .attr("width", x.bandwidth())
-    .attr("height", y.bandwidth())
-    .attr("fill", d => (d.count === 0 ? "#f9fafb" : color(d.count)))
-    .style("cursor", "pointer")
-    .on("click", (event, d) => {
-      updateFromHeatmap(d.hour, d.weekday);
-    });
-
-  svg
-    .append("text")
-    .attr("x", margin.left)
-    .attr("y", margin.top - 12)
-    .attr("text-anchor", "start")
-    .attr("font-size", 16)
-    .attr("font-weight", 600)
-    .text("Crash counts by hour of day and weekday");
-
-  const legendWidth = 160;
-  const legendHeight = 10;
-
-  const legendGroup = g
-    .append("g")
-    .attr("transform", `translate(0, ${innerHeight + 20})`);
-
-  const defs = svg.append("defs");
-  const gradient = defs
-    .append("linearGradient")
-    .attr("id", "heatmap-gradient")
-    .attr("x1", "0%")
-    .attr("x2", "100%")
-    .attr("y1", "0%")
-    .attr("y2", "0%");
-
-  gradient
-    .append("stop")
-    .attr("offset", "0%")
-    .attr("stop-color", color(minCount));
-
-  gradient
-    .append("stop")
-    .attr("offset", "100%")
-    .attr("stop-color", color(maxCount));
-
-  legendGroup
+    .enter()
     .append("rect")
-    .attr("width", legendWidth)
-    .attr("height", legendHeight)
-    .attr("fill", "url(#heatmap-gradient)")
-    .attr("stroke", "#d1d5db")
-    .attr("stroke-width", 0.5);
+    .attr("class", "heat-cell")
+    .attr("x", (d) => d.weekday * cellW)
+    .attr("y", (d) => d.hour * cellH)
+    .attr("width", cellW)
+    .attr("height", cellH)
+    .attr("fill", (d) => color(d.count))
+    .attr("stroke", "#ffffff")
+    .attr("stroke-width", 0.6)
+    .style("cursor", "pointer")
+    .on("click", (_, d) => setHeatmapFilter(d.hour, d.weekday));
 
-  const fmt = d3.format("~s");
+  // ------------------------------------------------------------
+  // 3. Selected outline (hour + weekday selection)
+  // ------------------------------------------------------------
+  if (filters.hour !== null && filters.weekday !== null) {
+    g.append("rect")
+      .attr("x", filters.weekday * cellW)
+      .attr("y", filters.hour * cellH)
+      .attr("width", cellW)
+      .attr("height", cellH)
+      .attr("fill", "none")
+      .attr("stroke", "#1e3a8a")
+      .attr("stroke-width", 3);
+  }
 
-  legendGroup
-    .append("text")
-    .attr("x", 0)
-    .attr("y", legendHeight + 14)
-    .attr("fill", "#4b5563")
-    .attr("font-size", 11)
-    .text(fmt(minCount));
+  // ------------------------------------------------------------
+  // 4. Axes
+  // ------------------------------------------------------------
+  const yScale = d3.scaleBand().domain(hours).range([0, gridH]);
+  const xScale = d3.scaleBand().domain(weekdays).range([0, gridW]);
 
-  legendGroup
-    .append("text")
-    .attr("x", legendWidth)
-    .attr("y", legendHeight + 14)
-    .attr("fill", "#4b5563")
-    .attr("font-size", 11)
-    .attr("text-anchor", "end")
-    .text(fmt(maxCount));
+  g.append("g").call(d3.axisLeft(yScale).tickFormat(formatHourLabel));
+
+  g.append("g")
+    .attr("transform", `translate(0,${gridH})`)
+    .call(
+      d3.axisBottom(xScale).tickFormat((w) =>
+        ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][w]
+      )
+    );
+
+  // ------------------------------------------------------------
+  // 5. Title
+  // ------------------------------------------------------------
+  svg.append("text")
+    .attr("x", margin.left)
+    .attr("y", 22)
+    .attr("font-size", "17px")
+    .attr("font-weight", 600)
+    .text("Crash counts by hour and weekday");
+
+  // ------------------------------------------------------------
+  // 6. Legend
+  // ------------------------------------------------------------
+  drawLegend(svg, color, minVal, maxVal, margin, height);
 }
 
+// ============================================================
+// Format hours for axis
+// ============================================================
+function formatHourLabel(h) {
+  if (h === 0) return "12 AM";
+  if (h < 12) return `${h} AM`;
+  if (h === 12) return "12 PM";
+  return `${h - 12} PM`;
+}
 
+// ============================================================
+// Vertical gradient legend
+// ============================================================
+
+function drawLegend(svg, color, minVal, maxVal, margin, height) {
+  const gridH = height - margin.top - margin.bottom;
+  const legendW = 12;
+  const legendH = Math.min(240, gridH * 0.7);
+
+  const legendX = 20;
+  const legendY = margin.top + (gridH - legendH) / 2;
+
+  // Pixel --> data scale
+  const scale = d3.scaleLinear()
+    .domain([legendH, 0])       // top pixel = max count
+    .range([minVal, maxVal]);
+
+  // ------------------------------------------------------------
+  // Gradient bar
+  // ------------------------------------------------------------
+  svg.append("g")
+    .selectAll("rect")
+    .data(d3.range(legendH))
+    .enter()
+    .append("rect")
+    .attr("x", legendX)
+    .attr("y", d => legendY + d)
+    .attr("width", legendW)
+    .attr("height", 1)
+    .attr("fill", d => color(scale(d)));
+
+  // ------------------------------------------------------------
+  // Labels for legend 
+  // ------------------------------------------------------------
+
+  // Top label (max)
+  svg.append("text")
+    .attr("x", legendX + legendW / 2)
+    .attr("y", legendY - 6)
+    .attr("text-anchor", "middle")
+    .attr("font-size", "11px")
+    .text(maxVal);
+
+  // Bottom label (min)
+  svg.append("text")
+    .attr("x", legendX + legendW / 2)
+    .attr("y", legendY + legendH + 14)
+    .attr("text-anchor", "middle")
+    .attr("font-size", "11px")
+    .text(minVal);
+}

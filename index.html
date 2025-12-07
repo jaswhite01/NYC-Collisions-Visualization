@@ -1,57 +1,123 @@
+
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>NYC Motor Vehicle Collisions - Milestone 3 Dynamic (2022-2024)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NYC Motor Vehicle Collisions (2022–2024)</title>
 
-  <!-- Styles -->
+  <!-- D3 -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Our App Styles + JS -->
   <link rel="stylesheet" href="src/css/styles.css" />
-
-  <!-- Our app entry  -->
   <script type="module" src="src/js/main.js"></script>
 </head>
+
 <body>
+
+  <!--  HEADER -->
   <header class="app-header">
-    <h1>NYC Motor Vehicle Collisions (2022-2024)</h1>
-    <p class="subtitle">
-      Exploring spatial, temporal, and behavioral patterns in NYC crashes
-    </p>
+    <h1>NYC Motor Vehicle Collisions</h1>
+    <p class="subtitle">Exploring spatial, temporal, and behavioral patterns</p>
   </header>
 
+  <!--------------- FILTER BAR --------------->
+  <div id="top-filter-bar" class="top-filter-bar">
+
+    <!-- YEAR -->
+    <div class="flt-group">
+      <label for="filter-year">Year</label>
+      <select id="filter-year">
+        <option value="all">All</option>
+        <option value="2022">2022</option>
+        <option value="2023">2023</option>
+        <option value="2024">2024</option>
+      </select>
+    </div>
+
+    <!-- BOROUGH -->
+    <div class="flt-group">
+      <label for="filter-borough">Borough</label>
+      <select id="filter-borough">
+        <option value="all">All</option>
+        <option value="Manhattan">Manhattan</option>
+        <option value="Bronx">Bronx</option>
+        <option value="Brooklyn">Brooklyn</option>
+        <option value="Queens">Queens</option>
+        <option value="Staten Island">Staten Island</option>
+      </select>
+    </div>
+
+    <!-- MONTH RANGE -->
+    <div class="flt-group">
+      <label>Month Range</label>
+      <div class="month-slider-wrap">
+        <input type="range" id="filter-month-start" min="1" max="12" value="1">
+        <input type="range" id="filter-month-end" min="1" max="12" value="12">
+      </div>
+    </div>
+
+    <!-- SEVERITY CHECKBOXES -->
+    <div class="flt-group">
+      <label>Severity</label>
+      <div class="chk-row">
+        <label><input type="checkbox" id="sev-fatal" checked> Fatal</label>
+        <label><input type="checkbox" id="sev-injury" checked> Injury</label>
+        <label><input type="checkbox" id="sev-pdo" checked> PDO</label>
+      </div>
+    </div>
+
+    <!-- VICTIMS CHECKBOXES -->
+    <div class="flt-group">
+      <label>Victims</label>
+      <div class="chk-row">
+        <label><input type="checkbox" id="vic-ped" checked> Ped</label>
+        <label><input type="checkbox" id="vic-cyc" checked> Cyc</label>
+        <label><input type="checkbox" id="vic-mot" checked> Mot</label>
+      </div>
+    </div>
+
+    <!-- FATAL MARKER TOGGLE -->
+    <div class="flt-group">
+      <label>Highlight</label>
+      <label><input type="checkbox" id="mark-fatal"> Fatal rings</label>
+    </div>
+
+    <!-- RESET BUTTON -->
+    <div class="flt-group">
+      <button id="reset-filters-top" class="reset-btn-top">Reset</button>
+    </div>
+
+  </div>
+
+  <!---------------  MAIN LAYOUT
+       Left = Heatmap + Factors
+       Right = Map
+   ----------------->
   <main class="layout">
-    <!-- LEFT: View B + View C stacked -->
-    <section class="panel sidebar-panel" aria-label="Time and factors overview">
-      <section id="heatmap-root"
-               class="subpanel heatmap-panel"
-               aria-label="Crash frequency by hour and weekday">
-      </section>
 
-      <section id="factors-root"
-               class="subpanel factors-panel"
-               aria-label="Top crash factors">
-      </section>
+    <!-- LEFT: (Views B + C stacked) -->
+    <section class="panel sidebar-panel">
+      <section id="heatmap-root" class="subpanel heatmap-panel"></section>
+      <section id="factors-root" class="subpanel factors-panel"></section>
     </section>
 
-    <!-- RIGHT: View A map ( legend overlays here) -->
-    <section id="map-root"
-             class="panel map-panel"
-             aria-label="NYC crash map">
-      <!-- map.js will inject SVG + canvas + legend -->
-    </section>
+    <!-- RIGHT: View A map -->
+    <section id="map-root" class="panel map-panel"></section>
 
-    <!-- BOTTOM: View D placeholder -->
-    <section id="details-root"
-             class="panel details-panel"
-             aria-label="Detailed crash records (placeholder)">
-      <p class="details-placeholder">
-        View D - detailed table / records will go here once we finish A, B C!.
-      </p>
-    </section>
   </main>
 
+  <!-- 
+       FOOTER
+   -->
   <footer class="app-footer">
-    Data: NYC Open Data (h9gi-nx95, gthc-hcne). Window 2022-2024. Frozen exports.
+    Data: NYC Open Data (2022–2024).
   </footer>
+
 </body>
 </html>

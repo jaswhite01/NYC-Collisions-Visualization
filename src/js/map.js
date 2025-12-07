@@ -1,291 +1,252 @@
-// src/js/map.js
-import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+// ============================================================
+// map.js - View A (Leaflet basemap and custom canvas overlay)
+// ============================================================
 
-const MAP_ROOT_ID = "map-root";
-let activeFilters = { hour: null, weekday: null, factor: null };
-let redrawPoints = null;
+import { filters } from "./main.js";
 
-export async function initMap(filters) {
-  if (filters) {
-    activeFilters = filters;
+// ------------------------------------------------------------
+// Module-level state
+// ------------------------------------------------------------
+let map;
+let pointCanvas;
+let ctx;
+let quadtree;
+let latestData = [];
+
+const MAP_ID = "map-root";
+
+// Colors
+const COLOR_FATAL = "#b91c1c";
+const COLOR_INJURY = "#f97316";
+const COLOR_PDO = "#3b82f6";
+
+// ============================================================
+// initMap - called once from main.js
+// ============================================================
+export function initMap() {
+  // 1. Create Leaflet map
+  map = L.map(MAP_ID, {
+    center: [40.7128, -74.0060],
+    zoom: 11,
+    zoomControl: true
+  });
+
+  // 2. Positron tiles
+  L.tileLayer(
+    "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+    {
+      attribution: '&copy; <a href="https://carto.com/">CARTO</a> - Positron',
+      maxZoom: 18
+    }
+  ).addTo(map);
+
+  // 3. Canvas overlay positioned in #map-root
+  const mapRoot = document.getElementById(MAP_ID);
+  if (getComputedStyle(mapRoot).position === "static") {
+    mapRoot.style.position = "relative";
   }
 
-  const container = document.getElementById(MAP_ROOT_ID);
-  if (!container) {
-    console.error(`No element with id="${MAP_ROOT_ID}" found.`);
-    return;
-  }
+  pointCanvas = document.createElement("canvas");
+  pointCanvas.id = "map-points-canvas";
+  pointCanvas.style.position = "absolute";
+  pointCanvas.style.top = "0";
+  pointCanvas.style.left = "0";
+  pointCanvas.style.width = "100%";
+  pointCanvas.style.height = "100%";
+  pointCanvas.style.pointerEvents = "auto"; //  hover
+  pointCanvas.style.zIndex = "450";
+  mapRoot.appendChild(pointCanvas);
 
-  container.innerHTML = "";
+  ctx = pointCanvas.getContext("2d");
 
-  const wrapper = document.createElement("div");
-  wrapper.className = "map-wrap";
-  container.appendChild(wrapper);
-
-  const legend = document.createElement("div");
-  legend.className = "map-legend";
-  legend.innerHTML = `
-    <p class="map-legend-title">Crash severity</p>
-    <ul class="map-legend-list">
-      <li class="map-legend-item">
-        <span class="legend-swatch legend-fatal"></span>
-        Fatal crash
-      </li>
-      <li class="map-legend-item">
-        <span class="legend-swatch legend-injury"></span>
-        Injury crash
-      </li>
-      <li class="map-legend-item">
-        <span class="legend-swatch legend-pdo"></span>
-        Property damage only
-      </li>
-    </ul>
-  `;
-  wrapper.appendChild(legend);
-
+  // 4. Reusable tooltip div
   const tooltip = document.createElement("div");
-  tooltip.className = "map-tooltip";
-  wrapper.appendChild(tooltip);
+  tooltip.className = "hover-tooltip";
+  tooltip.style.opacity = 0;
+  mapRoot.appendChild(tooltip);
 
-  const svg = d3
-    .select(wrapper)
-    .append("svg")
-    .attr("class", "map-svg");
-
-  const canvas = document.createElement("canvas");
-  canvas.className = "map-canvas";
-  wrapper.appendChild(canvas);
-  const ctx = canvas.getContext("2d");
-
-  const projection = d3.geoMercator();
-  const path = d3.geoPath(projection);
-
-  let geojson;
-  let crashes;
-
-  let quadtree = null;
-  let hoveredCrash = null;
-
-  try {
-    [geojson, crashes] = await Promise.all([
-      d3.json("data_geo/boroughs.geojson"),
-      d3.csv("data_proc/crashes_clean.csv", rowParser)
-    ]);
-  } catch (err) {
-    console.error("Error loading map data:", err);
-    return;
-  }
-
-  console.log("GeoJSON features:", geojson.features.length);
-  console.log("Crashes loaded:", crashes.length);
-
-  function resizeAndRedraw() {
-    const { width, height } = wrapper.getBoundingClientRect();
-    if (!width || !height) return;
-
-    svg.attr("width", width).attr("height", height);
-
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    projection.fitSize([width, height], geojson);
-
-    svg.selectAll("path").remove();
-    svg
-      .selectAll("path")
-      .data(geojson.features)
-      .enter()
-      .append("path")
-      .attr("class", "borough-outline")
-      .attr("d", path);
-
-    const hitRect = svg.selectAll(".map-hit-rect").data([null]);
-    hitRect
-      .enter()
-      .append("rect")
-      .attr("class", "map-hit-rect")
-      .merge(hitRect)
-      .attr("width", width)
-      .attr("height", height)
-      .attr("fill", "transparent")
-      .on("mousemove", handleMouseMove)
-      .on("mouseleave", handleMouseLeave);
-
-    for (const d of crashes) {
-      const [lon, lat] = [d.longitude, d.latitude];
-      const p = projection([lon, lat]);
-      if (p) {
-        d.x = p[0];
-        d.y = p[1];
-      } else {
-        d.x = NaN;
-        d.y = NaN;
-      }
-    }
-
-    quadtree = d3
-      .quadtree()
-      .x(d => d.x)
-      .y(d => d.y)
-      .addAll(crashes.filter(d => !Number.isNaN(d.x) && !Number.isNaN(d.y)));
-
-    drawPoints();
-  }
-
-  function drawPoints() {
-    const { width, height } = wrapper.getBoundingClientRect();
-    ctx.clearRect(0, 0, width, height);
-
-    const radius =
-      activeFilters.hour !== null ||
-      activeFilters.weekday !== null ||
-      activeFilters.factor !== null
-        ? 2.5
-        : 0.8;
-
-    for (const d of crashes) {
-      if (activeFilters.hour !== null && d.hour !== activeFilters.hour) continue;
-      if (activeFilters.weekday !== null && d.weekday !== activeFilters.weekday)
-        continue;
-      if (activeFilters.factor !== null && d.factor_clean !== activeFilters.factor)
-        continue;
-
-      if (Number.isNaN(d.x) || Number.isNaN(d.y)) continue;
-
-      let fill;
-      if (d.severity === "fatal") {
-        fill = "rgba(220, 38, 38, 0.9)";
-      } else if (d.severity === "injury") {
-        fill = "rgba(245, 158, 11, 0.6)";
-      } else {
-        fill = "rgba(31, 41, 55, 0.15)";
-      }
-
-      ctx.beginPath();
-      ctx.fillStyle = fill;
-      ctx.arc(d.x, d.y, radius, 0, 2 * Math.PI);
-      ctx.fill();
-    }
-
-    if (
-      hoveredCrash &&
-      !Number.isNaN(hoveredCrash.x) &&
-      !Number.isNaN(hoveredCrash.y)
-    ) {
-      ctx.beginPath();
-      ctx.strokeStyle = "rgba(37, 99, 235, 0.9)";
-      ctx.lineWidth = 2;
-      ctx.arc(hoveredCrash.x, hoveredCrash.y, 4, 0, 2 * Math.PI);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.fillStyle = "rgba(37, 99, 235, 0.9)";
-      ctx.arc(hoveredCrash.x, hoveredCrash.y, 2, 0, 2 * Math.PI);
-      ctx.fill();
-    }
-  }
-
-  redrawPoints = drawPoints;
-
-  function handleMouseMove(event) {
+  // ------------------------------------------------------------
+  // Hover logic
+  // ------------------------------------------------------------
+  pointCanvas.addEventListener("mousemove", (evt) => {
     if (!quadtree) return;
 
-    const [mx, my] = d3.pointer(event, svg.node());
-    const searchRadius = 10;
+    const rect = pointCanvas.getBoundingClientRect();
+    const mx = evt.clientX - rect.left;
+    const my = evt.clientY - rect.top;
 
-    const nearest = quadtree.find(mx, my, searchRadius);
+    let nearest = null;
+    let minDist2 = 64; 
+    
+    quadtree.visit((node) => {
+      const d = node.data;
+      if (!d) return false;
+
+      const dx = mx - d.x;
+      const dy = my - d.y;
+      const dist2 = dx * dx + dy * dy;
+
+      if (dist2 < minDist2) {
+        minDist2 = dist2;
+        nearest = d;
+      }
+      return false;
+    });
 
     if (!nearest) {
-      hoveredCrash = null;
       tooltip.style.opacity = 0;
-      drawPoints();
       return;
     }
 
-    hoveredCrash = nearest;
-    drawPoints();
-
-    const bounds = wrapper.getBoundingClientRect();
-    const clientX = event.clientX;
-    const clientY = event.clientY;
-
+    tooltip.style.left = `${mx + 12}px`;
+    tooltip.style.top = `${my + 12}px`;
     tooltip.style.opacity = 1;
-    tooltip.style.left = `${clientX - bounds.left + 12}px`;
-    tooltip.style.top = `${clientY - bounds.top + 12}px`;
-
-    const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const weekdayLabel =
-      nearest.weekday != null
-        ? weekdayNames[nearest.weekday] ?? nearest.weekday
-        : "–";
-    const hourLabel = nearest.hour != null ? `${nearest.hour}:00` : "–";
-    const severityLabel =
-      nearest.severity === "fatal"
-        ? "Fatal"
-        : nearest.severity === "injury"
-        ? "Injury"
-        : "Property damage only";
-
     tooltip.innerHTML = `
-      <div><strong>Crash ${nearest.collision_id}</strong></div>
-      <div>Severity: ${severityLabel}</div>
-      <div>Borough: ${nearest.borough ?? "–"}</div>
-      <div>ZIP: ${nearest.zip_code ?? "–"}</div>
-      <div>Weekday: ${weekdayLabel}</div>
-      <div>Hour: ${hourLabel}</div>
+      <b>${nearest.severity}</b><br/>
+      Borough: ${nearest.borough || "Unknown"}<br/>
+      Hour: ${nearest.hour}<br/>
+      Weekday: ${nearest.weekday}
     `;
-  }
+  });
 
-  function handleMouseLeave() {
-    hoveredCrash = null;
+  pointCanvas.addEventListener("mouseleave", () => {
     tooltip.style.opacity = 0;
-    drawPoints();
-  }
+  });
 
-  resizeAndRedraw();
-  window.addEventListener("resize", resizeAndRedraw);
-}
+  // ------------------------------------------------------------
+  // Redraw when map view changes
+  // ------------------------------------------------------------
+  map.on("zoomend moveend resize", () => {
+    if (latestData.length) redraw();
+  });
 
-function rowParser(d) {
-  // auto-detect factor column, similar to factors.js
-  let rawFactor =
-    d.factor_clean ||
-    d.factor_1_clean ||
-    d.factor_1 ||
-    d.contributing_factor ||
-    d.contributing_factor_1;
-
-  if (!rawFactor || rawFactor === "") {
-    for (const key of Object.keys(d)) {
-      if (key.toLowerCase().includes("factor")) {
-        const val = d[key];
-        if (val && val !== "") {
-          rawFactor = val;
-          break;
-        }
-      }
-    }
-  }
-
-  return {
-    collision_id: d.collision_id,
-    latitude: +d.latitude,
-    longitude: +d.longitude,
-    borough: d.borough || null,
-    zip_code: d.zip_code || null,
-    hour: d.hour === "" ? null : +d.hour,
-    weekday: d.weekday === "" ? null : +d.weekday,
-    severity: d.severity || "pdo",
-    factor_clean: rawFactor && rawFactor !== "" ? rawFactor : "Other / unknown"
+  // ------------------------------------------------------------
+  // Realign hack - handles layout shifts
+  // ------------------------------------------------------------
+  const realign = () => {
+    if (!map || !latestData.length) return;
+    map.invalidateSize();
+    redraw();
   };
+
+  [0, 200, 400, 800].forEach((t) => setTimeout(realign, t));
 }
 
-export function updateMap(filters) {
-  activeFilters = filters;
-  if (redrawPoints) {
-    redrawPoints();
-  }
+// Optional recenter helper
+export function recenterMap() {
+  if (map) map.setView([40.7128, -74.0060], 11);
 }
 
+// ============================================================
+// updateMap - called from main.js whenever filters change
+// ============================================================
+export function updateMap(data) {
+  latestData = data || [];
+  redraw();
+}
+
+// ============================================================
+// redraw - project points + draw + legend
+// ============================================================
+function redraw() {
+  if (!map || !pointCanvas || !ctx) return;
+
+  const size = map.getSize();
+  pointCanvas.width = size.x;
+  pointCanvas.height = size.y;
+
+  ctx.clearRect(0, 0, pointCanvas.width, pointCanvas.height);
+
+  // Project crashes into container-pixel coords
+  const projected = latestData
+    .map((d) => {
+      const lat = +d.latitude;
+      const lng = +d.longitude;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+      const p = map.latLngToContainerPoint([lat, lng]);
+      return { ...d, x: p.x, y: p.y };
+    })
+    .filter(Boolean);
+
+  // QuadTree for hover
+  quadtree = d3
+    .quadtree()
+    .x((d) => d.x)
+    .y((d) => d.y)
+    .addAll(projected);
+
+  drawPoints(projected);
+  drawLegend(latestData);
+}
+
+// ============================================================
+// drawPoints - severity colors + optional fatal rings
+// ============================================================
+function drawPoints(points) {
+  if (!points.length) return;
+
+  points.forEach((d) => {
+    let color, alpha;
+
+    if (d.severity === "fatal") {
+      color = COLOR_FATAL;
+      alpha = 0.9;
+    } else if (d.severity === "injury") {
+      color = COLOR_INJURY;
+      alpha = 0.7;
+    } else {
+      color = COLOR_PDO;
+      alpha = 0.45;
+    }
+
+    ctx.beginPath();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.arc(d.x, d.y, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Optional ring highlight
+    if (filters.markFatal && d.severity === "fatal") {
+      ctx.beginPath();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = 1.4;
+      ctx.arc(d.x, d.y, 4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  });
+
+  ctx.globalAlpha = 1;
+}
+
+// ============================================================
+// drawLegend - counts by severity
+// ============================================================
+function drawLegend(data) {
+  d3.select(`#${MAP_ID} .map-legend`).remove();
+
+  const fatalCount = data.filter((d) => d.severity === "fatal").length;
+  const injuryCount = data.filter((d) => d.severity === "injury").length;
+  const pdoCount = data.filter((d) => d.severity === "pdo").length;
+
+  const legend = d3
+    .select(`#${MAP_ID}`)
+    .append("div")
+    .attr("class", "map-legend");
+
+  [
+    { label: `Fatal (${fatalCount})`, color: COLOR_FATAL },
+    { label: `Injury (${injuryCount})`, color: COLOR_INJURY },
+    { label: `PDO (${pdoCount})`, color: COLOR_PDO }
+  ].forEach((item) => {
+    const row = legend.append("div").attr("class", "map-legend-item");
+
+    row
+      .append("div")
+      .attr("class", "legend-swatch")
+      .style("background", item.color);
+
+    row.append("span").text(item.label);
+  });
+}
