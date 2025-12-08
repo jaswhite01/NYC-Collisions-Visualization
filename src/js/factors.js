@@ -197,50 +197,16 @@ function drawSeverityLegend(svg, colorScale, minRate, maxRate, width, height, la
 }
 
 // ============================================================
-// wrapText
+// wrapText - fixed width / spacing bug for factor labels
 // ============================================================
-// function wrapText(text, width) {
-//   text.each(function () {
-//     const words = this.textContent.split(/\s+/).reverse();
-//     let word;
-//     let line = [];
-//     let lineNumber = 0;
-//     const lineHeight = 1.1;
-//     const y = this.getAttribute("y");
-//     const dy = parseFloat(this.getAttribute("dy")) || 0;
 
-//     let tspan = d3.select(this)
-//       .text(null)
-//       .append("tspan")
-//       .attr("x", -10)
-//       .attr("y", y)
-//       .attr("dy", `${dy}em`);
-
-//     while ((word = words.pop())) {
-//       line.push(word);
-//       tspan.text(line.join(" "));
-//       if (tspan.node().getComputedTextLength() > width) {
-//         line.pop();
-//         tspan.text(line.join(" "));
-//         line = [word];
-
-//         tspan = d3.select(this)
-//           .append("tspan")
-//           .attr("x", -10)
-//           .attr("y", y)
-//           .attr("dy", `${++lineNumber * lineHeight + dy}em`)
-//           .text(word);
-//       }
-//     }
-//   });
-// }
 function wrapText(text, width) {
   text.each(function () {
     const words = this.textContent.split(/\s+/);
     const lines = [];
     let line = [];
 
-    // Build wrapped lines (but don't modify y yet)
+    // Build wrapped lines 
     words.forEach(word => {
       const testLine = [...line, word].join(" ");
       const temp = d3.select(this)
@@ -258,10 +224,9 @@ function wrapText(text, width) {
 
     if (line.length) lines.push(line.join(" "));
 
-    // Now clear and rebuild without shifting the band position
     const textSel = d3.select(this).text(null);
 
-    // Calculate vertical offset so multi-line stays centered
+ 
     const totalHeight = lines.length * 1.1;
     const offset = -(totalHeight - 1.1) / 2;
 
