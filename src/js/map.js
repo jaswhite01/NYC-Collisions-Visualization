@@ -77,7 +77,7 @@ export function initMap() {
 
     let nearest = null;
     let minDist2 = 64; 
-    
+
     quadtree.visit((node) => {
       const d = node.data;
       if (!d) return false;
@@ -210,7 +210,7 @@ function drawPoints(points) {
     if (filters.markFatal && d.severity === "fatal") {
       ctx.beginPath();
       ctx.globalAlpha = 1;
-      ctx.strokeStyle = "white";
+      ctx.strokeStyle ="rgba(220, 38, 38, 1.0)";
       ctx.lineWidth = 1.4;
       ctx.arc(d.x, d.y, 4, 0, Math.PI * 2);
       ctx.stroke();

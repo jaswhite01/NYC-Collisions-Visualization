@@ -66,7 +66,7 @@ export function updateFactors(data, filters) {
 
   const color = d3.scaleSequential()
     .domain([minRate, maxRate])
-    .interpolator(d3.interpolateYlOrRd);
+    .interpolator(t => d3.interpolatePurples(0.25 + 0.65 * t));
 
   // ------------------------------------------------------------
   // 3. Bars
@@ -106,14 +106,14 @@ export function updateFactors(data, filters) {
   // 5. Y-axis labels 
   // ------------------------------------------------------------
   const axisG = svg.append("g")
-    .attr("transform", `translate(${x0 - 5}, 0)`)
+    .attr("transform", `translate(${x0 - .5 }, 0)`)
     .call(d3.axisLeft(y));
 
   // remove axis lines/ticks
   axisG.select(".domain").remove();
   axisG.selectAll("line").remove();
 
-  // wrap labels 
+  // // wrap labels 
   axisG.selectAll("text")
     .attr("class", "factor-label")
     .call(wrapText, 130);
@@ -199,38 +199,77 @@ function drawSeverityLegend(svg, colorScale, minRate, maxRate, width, height, la
 // ============================================================
 // wrapText
 // ============================================================
+// function wrapText(text, width) {
+//   text.each(function () {
+//     const words = this.textContent.split(/\s+/).reverse();
+//     let word;
+//     let line = [];
+//     let lineNumber = 0;
+//     const lineHeight = 1.1;
+//     const y = this.getAttribute("y");
+//     const dy = parseFloat(this.getAttribute("dy")) || 0;
+
+//     let tspan = d3.select(this)
+//       .text(null)
+//       .append("tspan")
+//       .attr("x", -10)
+//       .attr("y", y)
+//       .attr("dy", `${dy}em`);
+
+//     while ((word = words.pop())) {
+//       line.push(word);
+//       tspan.text(line.join(" "));
+//       if (tspan.node().getComputedTextLength() > width) {
+//         line.pop();
+//         tspan.text(line.join(" "));
+//         line = [word];
+
+//         tspan = d3.select(this)
+//           .append("tspan")
+//           .attr("x", -10)
+//           .attr("y", y)
+//           .attr("dy", `${++lineNumber * lineHeight + dy}em`)
+//           .text(word);
+//       }
+//     }
+//   });
+// }
 function wrapText(text, width) {
   text.each(function () {
-    const words = this.textContent.split(/\s+/).reverse();
-    let word;
+    const words = this.textContent.split(/\s+/);
+    const lines = [];
     let line = [];
-    let lineNumber = 0;
-    const lineHeight = 1.1;
-    const y = this.getAttribute("y");
-    const dy = parseFloat(this.getAttribute("dy")) || 0;
 
-    let tspan = d3.select(this)
-      .text(null)
-      .append("tspan")
-      .attr("x", -10)
-      .attr("y", y)
-      .attr("dy", `${dy}em`);
+    // Build wrapped lines (but don't modify y yet)
+    words.forEach(word => {
+      const testLine = [...line, word].join(" ");
+      const temp = d3.select(this)
+        .text(testLine)
+        .node()
+        .getComputedTextLength();
 
-    while ((word = words.pop())) {
-      line.push(word);
-      tspan.text(line.join(" "));
-      if (tspan.node().getComputedTextLength() > width) {
-        line.pop();
-        tspan.text(line.join(" "));
+      if (temp > width && line.length) {
+        lines.push(line.join(" "));
         line = [word];
-
-        tspan = d3.select(this)
-          .append("tspan")
-          .attr("x", -10)
-          .attr("y", y)
-          .attr("dy", `${++lineNumber * lineHeight + dy}em`)
-          .text(word);
+      } else {
+        line = [...line, word];
       }
-    }
+    });
+
+    if (line.length) lines.push(line.join(" "));
+
+    // Now clear and rebuild without shifting the band position
+    const textSel = d3.select(this).text(null);
+
+    // Calculate vertical offset so multi-line stays centered
+    const totalHeight = lines.length * 1.1;
+    const offset = -(totalHeight - 1.1) / 2;
+
+    lines.forEach((l, i) => {
+      textSel.append("tspan")
+        .text(l)
+        .attr("x", -10)
+        .attr("dy", `${i === 0 ? offset : 1.1}em`);
+    });
   });
 }

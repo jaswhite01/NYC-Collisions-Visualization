@@ -50,7 +50,7 @@ export function updateHeatmap(data) {
 
   const color = d3.scaleSequential()
     .domain([0, maxVal])
-    .interpolator(d3.interpolateOranges);
+    .interpolator(d3.interpolateGreens);
 
   const gridW = width - margin.left - margin.right;
   const gridH = height - margin.top - margin.bottom;
@@ -144,7 +144,7 @@ function drawLegend(svg, color, minVal, maxVal, margin, height) {
   const legendW = 12;
   const legendH = Math.min(240, gridH * 0.7);
 
-  const legendX = 20;
+  const legendX = 15;
   const legendY = margin.top + (gridH - legendH) / 2;
 
   // Pixel --> data scale
