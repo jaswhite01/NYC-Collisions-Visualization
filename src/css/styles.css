@@ -188,3 +188,15 @@ h1, h2, h3 {
   text-align: center;
   font-size: 13px;
 }
+
+.video-link {
+  color: #ffffff;
+  font-weight: 600;
+  text-decoration: none;
+  opacity: 0.9;
+}
+
+.video-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
